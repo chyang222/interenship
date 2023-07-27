@@ -1,4 +1,6 @@
 # interenship
 
-word2vec_model url = https://fasttext.cc/docs/en/pretrained-vectors.html - korean  
-                     https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM/view?resourcekey=0-wjGZdNAUop6WykTtMip30g - english
+/object_outlier/bert/service/pth -> bert.pth
+/object_outlier/bert/service/word2vec -> wiki.ko.vec(한글) / GoogleNews-vectors-negative300.bin(영어)
+
+구글 드라이브 url -> https://drive.google.com/drive/folders/1AV6IwWU4ypw8_R4CAp_qYBlHG17pUpxQ?usp=drive_link
