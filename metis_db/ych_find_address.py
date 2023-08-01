@@ -65,7 +65,7 @@ def main():
         data_path = '/data2/metis_dstrb/'
         filelist =  os.listdir(data_path)
         file_list_csv = [file for file in filelist if file.endswith('.csv')]
-        address_report_format = pd.DataFrame(columns=('No','vvid','컬럼명','주소 여부'))
+        address_report_format = pd.DataFrame(columns=('No','uuid','컬럼명','주소 여부'))
         index=0
         
         for idx, path in enumerate(file_list_csv):

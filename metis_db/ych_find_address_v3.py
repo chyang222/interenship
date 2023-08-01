@@ -76,19 +76,30 @@ def main():
                 df = pd.read_csv(data_path + path, encoding = 'utf-8-sig', nrows = 10, engine='python') 
             except:
                 try:
-                    df = pd.read_csv(data_path + path, encoding = 'cp949', nrows = 10, engine='python') 
+                    df = pd.read_csv(data_path + path, encoding = 'cp949', nrows = 10, ineterminator='\n', engine='python') 
                 except:
-                    address_report_format.loc[index] = [idx+1, path, traceback.format_exc(), '-']
-                    index += 1
-            
+                    try:
+                        df = pd.read_csv(data_path + path, encoding = 'euc_kr', nrows = 10, engine='python') 
+                    except:
+                        address_report_format.loc[index] = [idx+1, path,'-', 'X']
+                        index += 1    
+                
             compare = df.select_dtypes(include='object')     
+            
+            check_add_count = 0
+            
             for col in compare.columns:
                 add_series = compare[col].apply(lambda x: check_address(x))
                 if any(add_series == 'O'):
                     address_report_format.loc[index] = [idx+1, path, col, 'O']
+                    check_add_count += 1
+                    index+=1
+            
+            if check_add_count == 0:
+                address_report_format.loc[index] = [idx+1, path, '-', 'X']
                 index+=1
             
-        address_report_format.to_csv("/home/datanuri/yjjo/python_scripts/Report/데이터누리_주소판별여부.csv", encoding = 'utf-8-sig')
+        address_report_format.to_csv("/home/datanuri/yjjo/python_scripts/Report/데이터누리_주소판별여부_all_2.csv", encoding = 'utf-8-sig')
 
     except RuntimeWarning as w:
       logging.warning(w)
