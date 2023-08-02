@@ -103,6 +103,7 @@ def read_file_list(path):
         log_err('############ Read Path \"{}\" Error'.format(path))
         log_err(traceback.format_exc())
 
+
 ''' main '''
 if __name__ == '__main__':
     # Calculate Run Time
