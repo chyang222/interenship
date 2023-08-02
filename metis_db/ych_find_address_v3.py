@@ -16,7 +16,6 @@ import os
 import warnings
 import traceback
 import csv
-
 warnings.filterwarnings('ignore')
 csv.field_size_limit(100000000)
 
@@ -24,7 +23,6 @@ filePath, fileName = '/home/datanuri/yjjo/python_scripts', 'ych_find_address.py'
 logFolder = os.path.join(filePath , 'logs')
 os.makedirs(logFolder, exist_ok = True)
 logfilepath = os.path.join(logFolder, fileName.split('.')[0] + '_' +re.sub('-', '', datetime.datetime.now().strftime('%Y%m%d')) + '.log')
-
 
 dictConfig({
     'version': 1,
@@ -51,11 +49,6 @@ try:
     os.makedirs('/home/datanuri/yjjo/python_scripts/Report')
 except:
     pass
-
-
-#주소 체크 기준
-check_add = ['강원특별자치도', '경기도', '경상남도', '경상북도', '광주광역시', '대구광역시', '대전광역시', '부산광역시', '서울특별시', '세종특별자치시', '울산광역시', '인천광역시', '전라남도', '전라북도', '제주특별자치도', '충청남도', '충정북도']
-
         
 def main():
     try:
@@ -99,7 +92,7 @@ def main():
                 address_report_format.loc[index] = [idx+1, path, '-', 'X']
                 index+=1
             
-        address_report_format.to_csv("/home/datanuri/yjjo/python_scripts/Report/데이터누리_주소판별여부_all_2.csv", encoding = 'utf-8-sig')
+        address_report_format.to_csv("/home/datanuri/yjjo/python_scripts/Report/데이터누리_주소판별여부.csv", encoding = 'utf-8-sig')
 
     except RuntimeWarning as w:
       logging.warning(w)
@@ -128,6 +121,9 @@ if __name__=="__main__":
     start_time = datetime.datetime.now()
     
     ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+    #주소 체크 기준
+    check_add = ['강원특별자치도', '경기도', '경상남도', '경상북도', '광주광역시', '대구광역시', '대전광역시', '부산광역시', '서울특별시', '세종특별자치시', '울산광역시', '인천광역시', '전라남도', '전라북도', '제주특별자치도', '충청남도', '충정북도']
+
     main()
     
     ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
