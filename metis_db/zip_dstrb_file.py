@@ -1,8 +1,5 @@
 #!/usr/bin/python
 # -*- coding : utf-8 -*-
-'''
-'''
-''' install '''
 
 ''' import '''
 import logging

@@ -1,10 +1,8 @@
 #!/usr/bin/python
 # -*- coding : utf-8 -*-
 '''
- @author : yjjo
+ @author : ych
 '''
-''' install '''
-
 ''' import '''
 import logging
 from logging.config import dictConfig

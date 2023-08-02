@@ -3,8 +3,6 @@
 '''
  @author : ych
 '''
-''' install '''
-
 ''' import '''
 import pandas as pd
 import numpy as np
@@ -48,7 +46,7 @@ dictConfig({
 
 try:
     os.makedirs('/home/datanuri/yjjo/python_scripts/Report')
-except:
+except: 
     pass
         
 def main():
