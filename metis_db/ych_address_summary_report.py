@@ -11,7 +11,6 @@ def main(df):
     node_count = node['주소 여부'].count().sort_values().to_list()
     include_df = node.agg({'주소 여부':get_add_count})['주소 여부'].droplevel(axis=0,level=1)
 
-
     idx = 0
     for id in node_idx:
         title = df[df.node_id == id[0]].taxonomy_title.iloc[0]
@@ -21,7 +20,6 @@ def main(df):
         summ_fomat.loc[idx] = in_df
         idx += 1
         
-
     writer = pd.ExcelWriter('/home/datanuri/yjjo/python_scripts/Report/mapping/데이터누리_address_final.xlsx', engine = 'xlsxwriter')
     summ_fomat.to_excel(writer, index = False, sheet_name = '요약')
     df.to_excel(writer , index = False, sheet_name = '세부내역')

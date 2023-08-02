@@ -24,6 +24,7 @@ logFolder = os.path.join(filePath , 'logs')
 os.makedirs(logFolder, exist_ok = True)
 logfilepath = os.path.join(logFolder, fileName.split('.')[0] + '_' +re.sub('-', '', datetime.datetime.now().strftime('%Y%m%d')) + '.log')
 
+
 dictConfig({
     'version': 1,
     'formatters': {
