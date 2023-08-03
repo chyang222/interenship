@@ -171,12 +171,13 @@ class Service:
         except KeyError:
             return None
     
-
-    def object_outlier(self, data, col):
+    #문자열 이상치 처리
+    def object_outlier(self, data, col, sense):
         
         data_dict = json.loads(data)
         df = pd.DataFrame.from_dict(data_dict)
 
+        out_stand = sense / 100.0
         #return str(df.city.unique())
         # 데이터가 없는 경우    
         if data == '':
@@ -200,16 +201,16 @@ class Service:
                 if all(count >= 10 for count in df[col].value_counts()[:5]):
                     compare = df[col].mode().iloc[0]
                     df["similarity"] = df[col].apply(lambda x: Service.get_word_similarity(compare, x, ko_model))
-                    Outlier = df[(df['similarity'] <= 0.2) | (pd.isna(df.similarity))]
-                    return {"Outlier": Outlier.index.to_list()}
+                    Outlier = df[(df['similarity'] <= out_stand) | (pd.isna(df.similarity))]
+                    return {"Outlier": Outlier[col].to_json(force_ascii = False)}
                     
                 
                 #value_counts의 상위 5개가 모두 10개 이하면 칼럼으로 유사도 측정
                 else:
                     #return re_col
                     df["similarity"] = df[col].apply(lambda x: Service.get_word_similarity(re_col, x, ko_model))    
-                    Outlier = df[(df['similarity'] <= 0.2) | (pd.isna(df.similarity))]
-                    return {"Outlier": Outlier.index.to_list()}
+                    Outlier = df[(df['similarity'] <= out_stand) | (pd.isna(df.similarity))]
+                    return {"Outlier": Outlier[col].to_json(force_ascii = False)}
                     
             
             if co_da[1] == 0:
@@ -224,12 +225,12 @@ class Service:
                     compare = df[col].mode().iloc[0]
                     df["similarity"] = df[col].apply(lambda x: Service.get_word_similarity(compare, x, eg_model))
                     #return str(df["similarity"])
-                    Outlier = df[(df['similarity'] <= 0.25) | (pd.isna(df.similarity))]
+                    Outlier = df[(df['similarity'] <= out_stand) | (pd.isna(df.similarity))]
 
-                    return {"Outlier": Outlier.index.to_list()}
+                    return {"Outlier": Outlier[col].to_json(force_ascii = False)}
         
                 else:
                     df["similarity"] = df[col].apply(lambda x: Service.get_word_similarity(re_col, x, eg_model))
-                    Outlier = df[(df['similarity'] <= 0.25) | (pd.isna(df.similarity))]
+                    Outlier = df[(df['similarity'] <= out_stand) | (pd.isna(df.similarity))]
                     
-                    return {"Outlier": Outlier.index.to_list()}
+                    return {"Outlier": Outlier[col].to_json(force_ascii = False)}
