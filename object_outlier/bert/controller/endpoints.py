@@ -55,7 +55,7 @@ class Object(Resource):
     
     def post(self):
         data = request.get_json(force=True)
-        return Service.object_outlier(self.app, data['data'], data['column']), 202
+        return Service.object_outlier(self.app, data['data'], data['column'], data['sensitivity']), 202
     
     #json에 이상치 찾을 칼럼명과 데이터를 함께해서 받을 예정 
     #그리고 input이라는 값에 이상치를 대체
