@@ -66,12 +66,6 @@ def upload_s3(s3, bucket_name, file_name):
     # s3 폴더 이동(백업)
     shutil.move(file_path, file_path2)
 
-# key 세팅
-service_name = 's3'
-endpoint_url = 'https://kr.object.ncloudstorage.com'
-region_name = 'Asia Pacific'
-access_key = 'C38F7E3A65624D369C1D'
-secret_key = '2FA18747C2D56E98963AB4D5D6B0D9A035518D98'
 
 # s3 클라이언트 생성
 s3 = boto3.client(service_name,
