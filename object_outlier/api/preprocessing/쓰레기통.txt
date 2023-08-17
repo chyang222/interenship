@@ -1,0 +1,272 @@
+
+    ########################################################################################
+    ########################################################################################
+    ########################################################################################
+
+    # 3. 데이터 추출(저장)
+    # parameter file_name, version
+    def export_project(self, payload, method='minor'):
+        patch = 0.01
+
+        file_name = payload['file_name']
+        project_name = payload['project_name']
+
+        org_version = float(payload['version'])
+        version = 0.00
+        if method == 'minor':
+            version = org_version + patch
+        elif method == 'major':
+            version = math.floor(org_version) + 1
+
+        version = format(version, '.2f')
+
+        ######################################
+        # session 말고 DB에 저장 or request 로 받아올 예정 수정 필요 #
+        ######################################
+        self.app.logger.info('export_project version: ' + version)
+        # url = "./server/" + project_name + '/p_data/' + file_name + '_V' + version + '_D' + date + '.json'
+        url = "./server/" + project_name + '/p_data/' + file_name + '_V' + version + '.json'
+
+        df = self.redo_job_history(payload=payload)
+        df.to_json(url, force_ascii=False)
+        print(df.head())
+        print("#############")
+        print(df.columns)
+        df = df.astype(str)
+        return df.to_json(force_ascii=False)
+
+    # 3-1. job_history load
+    def get_job_historys_by_file_name_and_version(self, payload):
+        file_name = payload['file_name']
+        version = payload['version']
+        result_set = self.jhDAO.select_job_history_by_file_name_and_version(file_name=file_name,
+                                                                            version=version)
+        return result_set
+
+    # 3-2. 추출 전 동작 재수행
+    def redo_job_history(self, payload):
+        result_set = self.get_job_historys_by_file_name_and_version(payload=payload)
+        df = self.load_org_file(payload=payload)
+        dataset_dtypes = self.get_dtype_of_dataframe(df=df)
+        i = 1
+        for row in result_set:
+            job_id = row['job_id']
+            content = row['content']
+            self.app.logger.info('redo action ' + str(i) + ". " + str(job_id))
+            i += 1
+            content['dataset_dtypes'] = dataset_dtypes
+            df, dataset_dtypes = self.redo_jobs(job_id=job_id, content=content, df=df)
+        return df
+
+    def redo_jobs(self, job_id, content, df):
+        if job_id == 'missing_value':
+            return self.missing_value(content, df=df)
+        elif job_id == 'delete_column':
+            return self.delete_column(content, df=df)
+        elif job_id == 'calc_columns':
+            return self.calc_columns_redo(content, df=df)
+        elif job_id == 'set_col_prop':
+            return self.set_col_prop(content, df=df)
+        elif job_id == 'col_to_datetime':
+            return self.set_col_prop_to_datetime(content, df=df)
+        elif job_id == 'split_var_dt':
+            return self.split_variable_datetime(content, df=df)
+        elif job_id == 'dt_to_str_format':
+            return self.dt_to_str_format(content, df=df)
+        elif job_id == 'diff_datetime':
+            return self.diff_datetime(content, df=df)
+        else:
+            print('EEEEEEEEEEEEEEEEEEEEEEERRRRRRRRRRRRRRRRRRROOOOOOOOOOR')
+
+    def calc_columns_redo(self, content, df):
+        calc_df = self.get_calc_dataset(content, df=df)
+        dataset_dtypes = self.get_dtype_of_dataframe(calc_df)
+        for payload in content['calc_job_history']:
+            payload['dataset_dtypes'] = dataset_dtypes
+            calc_df, dataset_dtypes = self.calculating_column(payload, df=calc_df)
+        return self.select_calc_column_to_combine(content, origin_df=df, calc_df=calc_df)
+
+    ########################################################################################
+    ########################################################################################
+    ########################################################################################
+    ########################################################################################
+    ########################################################################################
+
+    # 확인용
+    def show_dataset_all(self):
+        dataset = self.dsDAO.select_dataset()
+
+    def insert_test(self, payload):
+        self.dsDAO.insert_test(payload)
+
+    # 세션 정보 확인용
+    def print_session_keys(self):
+        for k in session.keys():
+            print(k)
+
+    # def redo_job_history(self, payload):
+    #     result_set = self.get_dataset_jobs_in_session(payload=payload)
+    #     version = payload['version']
+    #     # session에 버전에 맞는 데이터셋 저장
+    #     df_json = self.get_dataset_from_server(version)
+    #
+    #     for row in result_set:
+    #         job_id = row['job_id']
+    #         content = row['content']
+    #         self.app.logger.info('redo action ' + str(job_id) + ' / ' + str(content))
+    #
+    #         content.update(df_json)
+    #         df_json = self.redo_jobs(job_id=job_id, content=content)
+    #     return self.sampling_dataset()
+
+    # httpie 사용 시 session 유지 X 초기화됨
+    # http -v --admin [method] url
+    # 원래 파일 이름, DB에서 가져와야함
+    # 테스트용~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def load_df_from_directory(self, url='./server/project01/origin_data/sampledtrain.json', method='minor'):
+        project_name, file_name, version, date, extension = self.split_url(url)
+
+        if extension == 'json':
+            df = pd.read_json(url)
+        if extension == 'csv':
+            df = pd.read_csv(url)
+
+        session['current_df'] = df.to_dict('list')
+        session['current_filename'] = file_name
+        session['current_version'] = version
+        session['project_name'] = project_name
+        session['extension'] = extension
+        # minor, major upgrade 설정
+
+    def get_dataset_from_server(self, version):
+        url = './server/'
+        url += session['project_name']
+        url += '/p_data/'
+        url += session['current_filename']
+        url += '_V' + version + '.json'
+        print(url)
+        df = pd.read_json(url)
+
+        self.app.logger.info('load_df_from_server / url = ' + url)
+        session['current_version'] = version
+        return df.to_json()
+
+    # url 양식 /directory/<filename>_V<version>_D<dateime>.<extension>
+    # input test : /directory/sampledtrain_V1.00_20220323.csv
+    def split_url(self, url):
+        full_url = url.split('/')[-1]
+        project_name = url.split('/')[-3]
+        file_name = '.'.join(full_url.split('.')[:-1])
+        extension = full_url.split('.')[-1]
+
+        if '_D' in file_name and '_V' in file_name:
+            split_date = file_name.split('_D')
+            split_version = split_date[0].split('_V')
+
+            file_name = split_version[0]
+            f_date = split_date[-1]
+            version = float(split_version[1])
+        else:
+            # 신규 등록하는 데이터 셋일 때
+            version = 1.00
+            f_date = datetime.today().strftime('%Y%m%d')
+
+        return project_name, file_name, version, f_date, extension
+
+    def get_dataset_jobs_in_session(self, payload):
+        file_name = session['file_name']
+        version = payload['version']
+        seq = payload['seq']
+        result_set = self.dsDAO.select_dataset_jobs(file_name=file_name,
+                                                    version=version,
+                                                    seq=seq)
+        for r in result_set:
+            print(r)
+        return result_set
+
+    def init_dataset_table(self):
+        self.dsDAO.init_dataset()
+
+    def get_df(self, payload, df=None):
+        if df is None:
+            if 'calc_dataset' in payload:
+                return self.get_calc_dataset_from_payload(payload=payload)
+            else:
+                return self.get_df_from_payload(payload)
+        else:
+            return df
+
+    # DataFrame return
+    def get_df_from_payload(self, payload, change_type=True):
+        dataset = payload['dataset']
+        if type(dataset) == dict:
+            df = pd.DataFrame(dataset)
+        else:
+            df = pd.read_json(dataset)
+
+        if 'dataset_dtypes' in payload and change_type is True:
+            dataset_dtypes = dict(payload['dataset_dtypes'])
+            print(dataset_dtypes)
+            df = df.astype(dataset_dtypes)
+
+        return df
+
+    # method major 버전 증가 ex 1.05 -> 2.00
+    # method minor 버전 증가 ex 2.04 -> 2.05
+    # 임의 설정 파일 명 ./server/<projectname>/p_date/<filename>_V<version>.(csv, json)
+
+    # 예외처리는 일단 나중으로 미루자
+
+    def insert_dataset(self, payload, job_id):
+        # 작업 내용 dataset Table insert
+        # 사용한 함수,
+        jcontent = json.dumps(payload)
+        # id 정보, name 정보 = app 이나 database에서 가져오기 예상됨
+        target_id = 'admin' + str(random.randint(100, 300))
+
+        dataset = {
+            'target_id': target_id,
+            'version': session['current_version'],
+            'name': session['current_filename'],
+            'job_id': job_id,
+            'content': jcontent
+        }
+
+        self.dsDAO.insert_dataset(dataset=dataset)
+
+    # 결측 수식적용
+
+    # 결측 모델 적용
+
+    # 음수값 처리
+    # 일단 단일 열 처리
+    # column list or str
+    # 음수 값 -> 양수로 method = 'positive'
+    # 음수 값 -> 0     method = 'tozero'
+    # 행 제거 ->       method = 'drop'
+    def preprocessing_negative_value(self, columns, method='positive'):
+        df = session['current_df']
+        if method == 'drop':
+            idx = df[df[columns] < 0].index()
+            df = df.drop(idx)
+        else:
+            s = pd.DataFrame(df[columns])
+            if method == 'positive':
+                s[s < 0] = s[s < 0] * -1
+            if method == 'tozero':
+                s[s < 0] = 0
+            # if method == 'delete':
+            df[columns] = s
+            df.to_csv('./preprocessing/data/sampledtrain_test.csv')
+
+    # 소수점 처리
+
+    # 수식 비교??
+
+    # 팝업창에서 데이터셋 검색 시 호출 -> 조회
+    # /profile/{projectId}/data
+    # pathparameter : projectid
+    # bodyparameter : currentDatasetId, datasetName
+
+    # 테이블 작업 - 삭제 - 비어있는 모든 행
+    # 모든 컬럼의 데이터가 비어 있는 행을 삭제 처리한다.

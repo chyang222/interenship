@@ -1,0 +1,586 @@
+ # 2. 전처리 동작
+    # view <-> 상위 메서드 에서만 df.to_json() 예정
+    # 상위 <-> 하위 메서드 에선 DataFrame 객체 송수신
+
+
+    # 2-3. 연산
+
+    # 2-3-1. sampled_dataset 에서 연산용 데이터셋 추출
+    # calculating
+    # 테스트 완료
+    def get_calc_dataset(self, payload, df=None):
+        # calc_df == 계산 용 dataset
+        # 그냥 수치형 다 받아옴
+        if df is None:
+            dataset = self.get_df_from_payload(payload)
+            calc_df = dataset.select_dtypes(include=['int64', 'float64'])
+            dataset_dtypes = self.get_dtype_of_dataframe(calc_df)
+            response_object = {
+                'dataset': calc_df.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+            return response_object
+        else:
+            dataset = df
+            calc_df = dataset.select_dtypes(include=['int64', 'float64'])
+            return calc_df
+
+    # 2-3-2. 연산
+    # 테스트 완료
+    def calculating_column(self, payload, df=None):
+        # method == arithmetic -> column1, (column2 or scala or 집계 데이터), operator
+        #           return 연산 완료+추가된 calc_dataset
+        # method == function(aggregate, Statistical) -> function, (column or scala)
+        #           return 연산 완료+추가된 calc_dataset
+        method = payload['method']
+
+        if method == 'arithmetic':
+            calc_df = self.calc_arithmetic(payload=payload, df=df)
+
+        elif method == 'function':
+            calc_df = self.calc_function(payload=payload, df=df)
+
+        dataset_dtypes = self.get_dtype_of_dataframe(calc_df)
+        if df is None:
+            result = {
+                'calc_dataset': calc_df.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['calc_dataset']
+            del payload['dataset_dtypes']
+            if 'calc_job_history' not in payload:
+                c_j_history = list()
+                c_j_history.append(payload)
+            else:
+                c_j_history = payload['calc_job_history']
+                del payload['calc_job_history']
+                c_j_history.append(payload)
+
+            result['calc_job_history'] = c_j_history
+            return json.dumps(result)
+        else:
+            # 추출 시 반복작업 용
+            return calc_df, dataset_dtypes
+
+    # 2-3-2-1. 연산 동작(함수 선택 시)
+    def calc_function(self, payload, df=None):
+        if df is None:
+            calc_df = self.get_calc_dataset_from_payload(payload)
+        else:
+            calc_df = df
+        function = payload['calc_function']
+        columns = payload['columns']
+
+        # 여러 컬럼에서만 동작하는 함수 단일 컬럼 X
+        # mean, max, min, median, std, var
+        if function == 'mean':
+            result = calc_df[[columns]].mean(axis=1)
+        elif function == 'max':
+            result = calc_df[[columns]].max(axis=1)
+        elif function == 'min':
+            result = calc_df[[columns]].min(axis=1)
+        elif function == 'median':
+            result = calc_df[[columns]].median(axis=1)
+        elif function == 'std':
+            result = calc_df[[columns]].std(axis=1)
+        elif function == 'var':
+            result = calc_df[[columns]].var(axis=1)
+
+        # 단일 컬럼에서만 동작하는 함수
+        # sin, cos, abs, log,
+
+        elif function == 'sin':
+            result = np.sin(calc_df[[columns]])
+        elif function == 'cos':
+            result = np.cos(calc_df[[columns]])
+        elif function == 'abs':
+            result = np.abs(calc_df[[columns]])
+        elif function == 'log':
+            result = np.log(calc_df[[columns]])
+
+        column_name = function + '(' + columns + ')'
+        calc_df[column_name] = result
+        return calc_df
+
+    # 2-3-2-2. 연산 동작(산술 연산 선택 시)
+    # 산술 연산 + - * / %
+    def calc_arithmetic(self, payload, df=None):
+        calc_df = self.get_df(payload=payload, df=df)
+        operator = payload['operator']
+        column1 = payload['column1']
+        operand1 = calc_df[column1]
+        # 2번 피연산자
+        # 1. column명
+        # 2. 상수
+        # 3. column의 집계함수 값
+        value_type = payload['value_type']
+        if value_type == 'column':
+            column2 = payload['value']
+            operand2 = calc_df[column2]
+        elif value_type == 'column_func':
+            if df is None:
+                operand2, column2 = self.calc_function_column(payload=payload)
+            else:
+                operand2, column2 = self.calc_function_column(payload=payload, df=calc_df)
+        elif value_type == 'constant':
+            operand2 = float(payload['value'])
+            column2 = operand2
+
+        if operator == 'add':
+            result = operand1 + operand2
+            operator = '+'
+
+        elif operator == 'min':
+            result = operand1 - operand2
+            operator = '-'
+
+        elif operator == 'mul':
+            result = operand1 * operand2
+            operator = '*'
+
+        elif operator == 'div':
+            result = operand1 / operand2
+            operator = '/'
+
+        elif operator == 'remainder':
+            result = operand1 % operand2
+            operator = '%'
+
+        column_name = column1 + operator + column2
+        calc_df[column_name] = result
+        return calc_df
+
+    # 2-3-2-2-1. 두번째 피연산자 == 컬럼의 집계값 사용 시
+    def calc_function_column(self, payload, df=None):
+        column2 = payload['value']
+        function = payload['column_function']
+        if df is None:
+            calc_df = self.get_calc_dataset_from_payload(payload)
+        else:
+            calc_df = df
+        result = 0
+        if function == 'max':
+            result = df[column2].max(axis=0)
+        elif function == 'min':
+            result = df[column2].min(axis=0)
+        elif function == 'mean':
+            result = df[column2].mean(axis=0)
+        elif function == 'median':
+            result = df[column2].median(axis=0)
+        elif function == 'std':  # 표준편차
+            result = df[column2].std(axis=0)
+        elif function == 'var':  # 분산
+            result = df[column2].var(axis=0)
+
+        column_name = function + '(' + column2 + ')'
+        return result, column_name
+
+    def get_calc_dataset_from_payload(self, payload):
+        dataset = payload['calc_dataset']
+        if type(dataset) == dict:
+            return pd.DataFrame(dataset)
+        else:
+            return pd.read_json(dataset)
+
+    # 2-3-3. calc_dataset 에서 추출할 컬럼 선택 후 기존 데이터셋(sampled_dataset)으로 결합
+    def select_calc_column_to_combine(self, payload, origin_df=None, calc_df=None):
+        selected_columns = payload['selected_columns']
+        if origin_df is None:
+            calc_dataset = self.get_calc_dataset_from_payload(payload)
+            dataset = self.get_df_from_payload(payload, change_type=False)
+        else:
+            calc_dataset = calc_df
+            dataset = origin_df
+
+        dataset[selected_columns] = calc_dataset[selected_columns]
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if origin_df is None:
+            # 추출 시 재수행 동작이 아니라면 DB저장
+            job_history = payload['calc_job_history']
+            calc_payload = {
+                'file_name': payload['file_name'],
+                'version': payload['version'],
+                'selected_columns': selected_columns,
+                'calc_job_history': job_history  # list[json] 형식
+            }
+            self.insert_job_history(payload=calc_payload, job_id='calc_columns')
+
+            return_object = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+            return return_object
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-4. 컬럼 속성 변경
+    # 에러 처리 제외, 기능만 구현하게 코딩함.
+    def set_col_prop(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        column_name = payload['column_name']
+        types = payload['type']
+
+        dataset[column_name] = dataset[column_name].astype(types)
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+        if df is None:
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            job_history_payload = {
+                'file_name': payload['file_name'],
+                'version': payload['version'],
+                'column_name': column_name,
+                'type': types  # list[json] 형식
+            }
+
+            self.insert_job_history(payload=job_history_payload, job_id='set_col_prop')
+            return response_json
+        else:
+            return df, dataset_dtypes
+
+    # 2-5-1. 선택 열 date time 으로 변환 후 추가
+    def set_col_prop_to_datetime(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        selected_column = payload['selected_column']
+        dt_format = payload['format']
+
+        if df is not None:
+            dt_format2 = ""
+            for ch in dt_format:
+                if ch == '?':
+                    ch = '%'
+                dt_format2 += ch
+            dt_format = dt_format2
+
+        if 'column_name' in payload:
+            column_name = payload['column_name']
+            dataset[column_name] = pd.to_datetime(dataset[selected_column], format=dt_format)
+        else:
+            dataset[selected_column] = pd.to_datetime(dataset[selected_column], format=dt_format)
+        dataset_dtypes = self.get_dtype_of_dataframe(df=dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            # sql excute 할 때 %는 키워드로 인식 -->  % -> ?
+            # 더 나은 방법이 있으면 수정 예정
+            dt_format2 = ""
+            for ch in dt_format:
+                if ch == '%':
+                    ch = '?'
+                dt_format2 += ch
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            payload['format'] = dt_format2
+
+            self.insert_job_history(payload=payload, job_id="col_to_datetime")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    def split_variable_datetime(self, payload, df=None):
+        unit_list = payload['unit_list']
+        column_name = payload['column_name']
+        dataset = self.get_df(payload=payload, df=df)
+
+        for unit in unit_list:
+            temp = str(column_name) + '_' + unit
+            dataset[temp] = self.split_variable_to_unit(dataset, column_name=column_name, unit=unit)
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="split_var_dt")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # dt.dayofweek
+    # dt.day_name
+    def split_variable_to_unit(self, dataset, column_name, unit):
+        if unit == 'year':
+            return dataset[column_name].dt.year
+        elif unit == 'month':
+            return dataset[column_name].dt.month
+        elif unit == 'month_name':
+            return dataset[column_name].dt.month_name()
+        elif unit == 'day':
+            return dataset[column_name].dt.day
+        elif unit == 'hour':
+            return dataset[column_name].dt.hour
+        elif unit == 'dayofweek':
+            return dataset[column_name].dt.dayofweek
+        elif unit == 'day_name':
+            return dataset[column_name].dt.day_name()
+        else:
+            print("EEEEERRRRRRRRRROOOORRRRR")
+            return dataset
+
+    # 2-5-3. 날짜 처리(문자열로)
+    def dt_to_str_format(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        column_name = payload['column_name']
+        dt_format = payload['format']
+        if df is not None:
+            dt_format2 = ""
+            for ch in dt_format:
+                if ch == '?':
+                    ch = '%'
+                dt_format2 += ch
+            dt_format = dt_format2
+
+        if 'new_column_name' in payload:
+            new_column_name = payload['new_column_name']
+            dataset[new_column_name] = dataset[column_name].dt.strftime(dt_format)
+        else:
+            dataset[column_name] = dataset[column_name].dt.strftime(dt_format)
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            dt_format2 = ""
+            for ch in dt_format:
+                if ch == '%':
+                    ch = '?'
+                dt_format2 += ch
+            payload['format'] = dt_format2
+
+            self.insert_job_history(payload=payload, job_id="dt_to_str_format")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-5-4. 날짜 처리(기준 일로 부터 날짜 차이)
+    def diff_datetime(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        unit = payload['unit']
+        column_name = payload['column_name']
+
+        year = payload['year']
+        month = payload['month']
+        day = payload['day']
+
+        if 'hour' in payload:
+            hour = payload['hour']
+            dt_diff = dataset[column_name] - datetime(year, month, day, hour)
+        else:
+            dt_diff = dataset[column_name] - datetime(year, month, day)
+
+        new_column_name = "diff" + str(year) + '-' + str(month) + '-' + str(day) + '-' + str(unit)
+        if unit == 'day':
+            dataset[new_column_name] = dt_diff.dt.days
+        if unit == 'minute':
+            dataset[new_column_name] = dt_diff.dt.total_seconds() / 60
+        if unit == 'hour':
+            dataset[new_column_name] = dt_diff.dt.total_seconds() / 360
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="diff_datetime")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-6 컬럼 순서 변경
+    def column_order_change(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        col_order_list = list(payload['col_order_list'])
+
+        dataset = dataset.iloc[:, col_order_list]
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="column_order_change")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-7 대소문자 변환
+    def col_prop_string_change(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        column_name = payload['column_name']
+        str_type = payload['str_type']
+
+        if str_type == 'UPP':
+            dataset[column_name] = dataset[column_name].str.upper()
+        elif str_type == 'LOW':
+            dataset[column_name] = dataset[column_name].str.lower()
+        elif str_type == 'CAP':
+            dataset[column_name] = dataset[column_name].str.capitalize()
+        elif str_type == 'TIT':
+            dataset[column_name] = dataset[column_name].str.title()
+        else:
+            pass
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="change_column_order")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-8 치환 - 입력값으로 교체
+    def col_prop_string_search_replace(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+
+        column_name = payload['column_name']
+        method = payload['method']
+        to_replace = payload['to_replace']
+        value = payload['value']
+
+        if method == 'default':
+            dataset[column_name].replace(to_replace=to_replace, value=value, inplace=True)
+        elif method == 'regex':
+            to_replace = "(.*)" + str(to_replace) + "(.*)"
+            value = r"\1" + str(value) + r"\2"
+            dataset[column_name].replace(to_replace=to_replace, value=value, regex=True, inplace=True)
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="replace_col_value")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-9 공백제거
+    def remove_space(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        column_name = payload['column_name']
+
+        dataset[column_name] = dataset[column_name].str.strip()
+
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="replace_space")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    # 2-10-1 중복 값 확인
+    def row_control_show_duplicate_row(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        columns = payload['columns']
+
+        duplicate_values = dataset[columns].value_counts()
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes,
+                'duplicate_values': duplicate_values.to_json(force_ascii=False)
+            }
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
+
+    def row_control_drop_duplicate_row(self, payload, df=None):
+        dataset = self.get_df(payload=payload, df=df)
+        columns = payload['columns']
+
+        dataset = dataset.drop_duplicates(subset=columns)
+        dataset_dtypes = self.get_dtype_of_dataframe(dataset)
+
+        if df is None:
+            dataset = dataset.astype(str)
+            response_json = {
+                'dataset': dataset.to_json(force_ascii=False),
+                'dataset_dtypes': dataset_dtypes
+            }
+
+            del payload['dataset']
+            del payload['dataset_dtypes']
+
+            self.insert_job_history(payload=payload, job_id="replace_space")
+
+            return response_json
+        else:
+            return dataset, dataset_dtypes
